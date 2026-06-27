@@ -6,6 +6,8 @@ import { calculateAudioQualityScore } from "@/lib/audioQuality";
 import { calculateNoiseFloor } from "@/lib/noiseFloor";
 import { calculateSpeechClarity } from "@/lib/speechClarity";
 import { generateAutoEqRecommendation } from "@/lib/autoEq";
+import { detectFeedbackRisk } from "@/lib/feedbackDetection";
+import { calculateAudioHealth } from "@/lib/audioHealth";
 
 export default function LiveMonitorPage() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -25,6 +27,12 @@ export default function LiveMonitorPage() {
   const [quality, setQuality] = useState("Idle");
   const [qualityScore, setQualityScore] = useState(100);
 
+  const [audioHealthScore, setAudioHealthScore] = useState(100);
+  const [audioHealthStatus, setAudioHealthStatus] = useState("Excellent");
+  const [audioHealthSummary, setAudioHealthSummary] = useState(
+    "Start monitoring to calculate overall audio health."
+  );
+
   const [noiseFloor, setNoiseFloor] = useState("-∞ dB");
   const [noiseSeverity, setNoiseSeverity] = useState("Low");
 
@@ -36,6 +44,12 @@ export default function LiveMonitorPage() {
     "No EQ recommendation available yet."
   );
   const [autoEqActions, setAutoEqActions] = useState<string[]>([]);
+
+  const [feedbackRisk, setFeedbackRisk] = useState("Low");
+  const [feedbackBand, setFeedbackBand] = useState("None");
+  const [feedbackRecommendation, setFeedbackRecommendation] = useState(
+    "No feedback risk detected."
+  );
 
   const [lowEnergy, setLowEnergy] = useState("0%");
   const [midEnergy, setMidEnergy] = useState("0%");
@@ -65,11 +79,8 @@ export default function LiveMonitorPage() {
     for (let i = 0; i < dataArray.length; i++) {
       const y = (dataArray[i] * 0.5 + 0.5) * canvas.height;
 
-      if (i === 0) {
-        ctx.moveTo(x, y);
-      } else {
-        ctx.lineTo(x, y);
-      }
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
 
       x += sliceWidth;
     }
@@ -144,8 +155,6 @@ export default function LiveMonitorPage() {
         const rmsDb = 20 * Math.log10(rmsValue || 0.00001);
         const peakDb = 20 * Math.log10(maxPeak || 0.00001);
 
-        const noiseResult = calculateNoiseFloor(rmsDb);
-
         const sampleRate = audioContext.sampleRate;
         const nyquist = sampleRate / 2;
         const binSize = nyquist / freqData.length;
@@ -176,6 +185,8 @@ export default function LiveMonitorPage() {
         const midPercent = Math.min(100, Math.round((mid / 255) * 100));
         const highPercent = Math.min(100, Math.round((high / 255) * 100));
 
+        const noiseResult = calculateNoiseFloor(rmsDb);
+
         const qualityResult = calculateAudioQualityScore({
           rmsDb,
           peakDb,
@@ -200,6 +211,14 @@ export default function LiveMonitorPage() {
           noiseSeverity: noiseResult.severity,
         });
 
+        const feedbackResult = detectFeedbackRisk({
+          lowPercent,
+          midPercent,
+          highPercent,
+          peakDb,
+          rmsDb,
+        });
+
         let currentClipping = "Not Detected";
         let currentQuality = "Good";
         let currentRecommendation =
@@ -210,6 +229,9 @@ export default function LiveMonitorPage() {
           currentQuality = "Poor";
           currentRecommendation =
             "Clipping detected. Reduce microphone gain or lower the mixer input level.";
+        } else if (feedbackResult.risk === "High") {
+          currentQuality = "Feedback Risk";
+          currentRecommendation = feedbackResult.recommendation;
         } else if (clarityResult.score < 50) {
           currentQuality = "Poor Clarity";
           currentRecommendation = clarityResult.recommendation;
@@ -225,6 +247,9 @@ export default function LiveMonitorPage() {
         } else if (noiseResult.severity === "High") {
           currentQuality = "Noisy";
           currentRecommendation = noiseResult.recommendation;
+        } else if (feedbackResult.risk === "Medium") {
+          currentQuality = "Feedback Warning";
+          currentRecommendation = feedbackResult.recommendation;
         } else if (lowPercent > midPercent + 20) {
           currentQuality = "Boomy";
           currentRecommendation =
@@ -242,6 +267,17 @@ export default function LiveMonitorPage() {
             "High frequencies are dominant. Reduce treble slightly to avoid harshness.";
         }
 
+        const audioHealthResult = calculateAudioHealth({
+          qualityScore: qualityResult.score,
+          speechClarityScore: clarityResult.score,
+          noiseSeverity: noiseResult.severity,
+          clipping: currentClipping,
+          feedbackRisk: feedbackResult.risk,
+          lowPercent,
+          midPercent,
+          highPercent,
+        });
+
         const currentRms = `${rmsDb.toFixed(1)} dB`;
         const currentPeak = `${peakDb.toFixed(1)} dBFS`;
         const currentNoiseFloor = `${noiseResult.noiseDb.toFixed(1)} dB`;
@@ -258,6 +294,10 @@ export default function LiveMonitorPage() {
         setQuality(currentQuality);
         setQualityScore(qualityResult.score);
 
+        setAudioHealthScore(audioHealthResult.score);
+        setAudioHealthStatus(audioHealthResult.status);
+        setAudioHealthSummary(audioHealthResult.summary);
+
         setNoiseFloor(currentNoiseFloor);
         setNoiseSeverity(currentNoiseSeverity);
 
@@ -267,6 +307,10 @@ export default function LiveMonitorPage() {
         setAutoEqPreset(autoEqResult.preset);
         setAutoEqSummary(autoEqResult.summary);
         setAutoEqActions(autoEqResult.actions);
+
+        setFeedbackRisk(feedbackResult.risk);
+        setFeedbackBand(feedbackResult.likelyBand);
+        setFeedbackRecommendation(feedbackResult.recommendation);
 
         setLowEnergy(currentLow);
         setMidEnergy(currentMid);
@@ -287,6 +331,10 @@ export default function LiveMonitorPage() {
             quality: currentQuality,
             qualityScore: qualityResult.score,
 
+            audioHealthScore: audioHealthResult.score,
+            audioHealthStatus: audioHealthResult.status,
+            audioHealthSummary: audioHealthResult.summary,
+
             noiseFloor: currentNoiseFloor,
             noiseSeverity: currentNoiseSeverity,
 
@@ -296,6 +344,10 @@ export default function LiveMonitorPage() {
             autoEqPreset: autoEqResult.preset,
             autoEqSummary: autoEqResult.summary,
             autoEqActions: autoEqResult.actions,
+
+            feedbackRisk: feedbackResult.risk,
+            feedbackBand: feedbackResult.likelyBand,
+            feedbackRecommendation: feedbackResult.recommendation,
 
             lowEnergy: currentLow,
             midEnergy: currentMid,
@@ -348,7 +400,8 @@ export default function LiveMonitorPage() {
           <h1 className="text-3xl font-bold">Live Audio Monitor</h1>
           <p className="mt-2 text-[#8aa3b8]">
             Analyze microphone audio using waveform, spectrum, noise floor,
-            speech clarity, quality score, and Auto-EQ recommendations.
+            speech clarity, feedback risk, audio health score, and Auto-EQ
+            recommendations.
           </p>
         </div>
 
@@ -365,31 +418,79 @@ export default function LiveMonitorPage() {
         <MetricCard title="Peak Level" value={peak} />
         <MetricCard title="Clipping" value={clipping} />
         <MetricCard title="Signal Quality" value={quality} />
+
         <MetricCard
           title="Quality Score"
           value={`${qualityScore}/100`}
           valueClass="text-green-400"
         />
+
+        <MetricCard
+          title="Audio Health"
+          value={`${audioHealthScore}/100`}
+          valueClass={
+            audioHealthStatus === "Critical" || audioHealthStatus === "Poor"
+              ? "text-red-400"
+              : audioHealthStatus === "Fair"
+              ? "text-yellow-300"
+              : "text-green-400"
+          }
+        />
+
+        <MetricCard
+          title="Health Status"
+          value={audioHealthStatus}
+          valueClass={
+            audioHealthStatus === "Critical" || audioHealthStatus === "Poor"
+              ? "text-red-400"
+              : audioHealthStatus === "Fair"
+              ? "text-yellow-300"
+              : "text-green-400"
+          }
+        />
+
         <MetricCard title="Noise Floor" value={noiseFloor} />
+
         <MetricCard
           title="Noise Severity"
           value={noiseSeverity}
           valueClass="text-yellow-300"
         />
+
         <MetricCard
           title="Speech Clarity"
           value={`${speechClarityScore}/100`}
           valueClass="text-green-400"
         />
+
         <MetricCard
           title="Intelligibility"
           value={speechClarityLevel}
           valueClass="text-green-400"
         />
+
         <MetricCard
           title="EQ Preset"
           value={autoEqPreset}
           valueClass="text-purple-400"
+        />
+
+        <MetricCard
+          title="Feedback Risk"
+          value={feedbackRisk}
+          valueClass={
+            feedbackRisk === "High"
+              ? "text-red-400"
+              : feedbackRisk === "Medium"
+              ? "text-yellow-300"
+              : "text-green-400"
+          }
+        />
+
+        <MetricCard
+          title="Likely Feedback Band"
+          value={feedbackBand}
+          valueClass="text-orange-300"
         />
       </div>
 
@@ -401,7 +502,6 @@ export default function LiveMonitorPage() {
 
       <section className="mt-8 rounded-2xl border border-[#22384d] bg-[#0d1f31] p-6">
         <h2 className="text-lg font-semibold">Real-Time Waveform</h2>
-
         <canvas
           ref={canvasRef}
           width={1200}
@@ -412,7 +512,6 @@ export default function LiveMonitorPage() {
 
       <section className="mt-8 rounded-2xl border border-[#22384d] bg-[#0d1f31] p-6">
         <h2 className="text-lg font-semibold">Frequency Spectrum</h2>
-
         <canvas
           ref={spectrumRef}
           width={1200}
@@ -422,8 +521,22 @@ export default function LiveMonitorPage() {
       </section>
 
       <section className="mt-8 rounded-2xl border border-[#22384d] bg-[#0d1f31] p-6">
-        <h2 className="text-lg font-semibold">AudioPilot Recommendation</h2>
+        <h2 className="text-lg font-semibold">Audio Health Summary</h2>
+        <div className="mt-5 rounded-xl border border-[#22384d] bg-[#11283d] p-5">
+          <p className="font-semibold text-green-400">
+            Score: {audioHealthScore}/100
+          </p>
 
+          <p className="mt-3 font-semibold text-[#38bdf8]">
+            Status: {audioHealthStatus}
+          </p>
+
+          <p className="mt-3 text-[#cfe7f8]">{audioHealthSummary}</p>
+        </div>
+      </section>
+
+      <section className="mt-8 rounded-2xl border border-[#22384d] bg-[#0d1f31] p-6">
+        <h2 className="text-lg font-semibold">AudioPilot Recommendation</h2>
         <div className="mt-5 rounded-xl border border-[#22384d] bg-[#11283d] p-5">
           <p className="text-[#cfe7f8]">{recommendation}</p>
         </div>
@@ -452,6 +565,26 @@ export default function LiveMonitorPage() {
               ))
             )}
           </ul>
+        </div>
+      </section>
+
+      <section className="mt-8 rounded-2xl border border-[#22384d] bg-[#0d1f31] p-6">
+        <h2 className="text-lg font-semibold">
+          Feedback / Howling Detection
+        </h2>
+
+        <div className="mt-5 rounded-xl border border-[#22384d] bg-[#11283d] p-5">
+          <p className="font-semibold text-orange-300">
+            Risk Level: {feedbackRisk}
+          </p>
+
+          <p className="mt-3 text-[#cfe7f8]">
+            Likely Band: {feedbackBand}
+          </p>
+
+          <p className="mt-3 text-[#cfe7f8]">
+            {feedbackRecommendation}
+          </p>
         </div>
       </section>
     </div>
