@@ -4,6 +4,8 @@ import { useRef, useState } from "react";
 import { saveAudioLog } from "@/lib/sessionLogger";
 import { calculateAudioQualityScore } from "@/lib/audioQuality";
 import { calculateNoiseFloor } from "@/lib/noiseFloor";
+import { calculateSpeechClarity } from "@/lib/speechClarity";
+import { generateAutoEqRecommendation } from "@/lib/autoEq";
 
 export default function LiveMonitorPage() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -19,11 +21,21 @@ export default function LiveMonitorPage() {
   const [rms, setRms] = useState("-∞ dB");
   const [peak, setPeak] = useState("-∞ dBFS");
   const [clipping, setClipping] = useState("Not Detected");
+
   const [quality, setQuality] = useState("Idle");
   const [qualityScore, setQualityScore] = useState(100);
 
   const [noiseFloor, setNoiseFloor] = useState("-∞ dB");
   const [noiseSeverity, setNoiseSeverity] = useState("Low");
+
+  const [speechClarityScore, setSpeechClarityScore] = useState(100);
+  const [speechClarityLevel, setSpeechClarityLevel] = useState("Excellent");
+
+  const [autoEqPreset, setAutoEqPreset] = useState("Balanced Live Mix");
+  const [autoEqSummary, setAutoEqSummary] = useState(
+    "No EQ recommendation available yet."
+  );
+  const [autoEqActions, setAutoEqActions] = useState<string[]>([]);
 
   const [lowEnergy, setLowEnergy] = useState("0%");
   const [midEnergy, setMidEnergy] = useState("0%");
@@ -53,8 +65,11 @@ export default function LiveMonitorPage() {
     for (let i = 0; i < dataArray.length; i++) {
       const y = (dataArray[i] * 0.5 + 0.5) * canvas.height;
 
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
+      if (i === 0) {
+        ctx.moveTo(x, y);
+      } else {
+        ctx.lineTo(x, y);
+      }
 
       x += sliceWidth;
     }
@@ -169,6 +184,22 @@ export default function LiveMonitorPage() {
           highPercent,
         });
 
+        const clarityResult = calculateSpeechClarity({
+          rmsDb,
+          lowPercent,
+          midPercent,
+          highPercent,
+          noiseSeverity: noiseResult.severity,
+        });
+
+        const autoEqResult = generateAutoEqRecommendation({
+          lowPercent,
+          midPercent,
+          highPercent,
+          speechClarityScore: clarityResult.score,
+          noiseSeverity: noiseResult.severity,
+        });
+
         let currentClipping = "Not Detected";
         let currentQuality = "Good";
         let currentRecommendation =
@@ -179,6 +210,9 @@ export default function LiveMonitorPage() {
           currentQuality = "Poor";
           currentRecommendation =
             "Clipping detected. Reduce microphone gain or lower the mixer input level.";
+        } else if (clarityResult.score < 50) {
+          currentQuality = "Poor Clarity";
+          currentRecommendation = clarityResult.recommendation;
         } else if (rmsDb < -45) {
           currentQuality = "Low Signal";
           currentRecommendation =
@@ -220,11 +254,19 @@ export default function LiveMonitorPage() {
         setRms(currentRms);
         setPeak(currentPeak);
         setClipping(currentClipping);
+
         setQuality(currentQuality);
         setQualityScore(qualityResult.score);
 
         setNoiseFloor(currentNoiseFloor);
         setNoiseSeverity(currentNoiseSeverity);
+
+        setSpeechClarityScore(clarityResult.score);
+        setSpeechClarityLevel(clarityResult.level);
+
+        setAutoEqPreset(autoEqResult.preset);
+        setAutoEqSummary(autoEqResult.summary);
+        setAutoEqActions(autoEqResult.actions);
 
         setLowEnergy(currentLow);
         setMidEnergy(currentMid);
@@ -237,16 +279,28 @@ export default function LiveMonitorPage() {
         if (now - lastLogTimeRef.current >= 5000) {
           saveAudioLog({
             time: new Date().toLocaleString(),
+
             rms: currentRms,
             peak: currentPeak,
             clipping: currentClipping,
+
             quality: currentQuality,
             qualityScore: qualityResult.score,
+
             noiseFloor: currentNoiseFloor,
             noiseSeverity: currentNoiseSeverity,
+
+            speechClarityScore: clarityResult.score,
+            speechClarityLevel: clarityResult.level,
+
+            autoEqPreset: autoEqResult.preset,
+            autoEqSummary: autoEqResult.summary,
+            autoEqActions: autoEqResult.actions,
+
             lowEnergy: currentLow,
             midEnergy: currentMid,
             highEnergy: currentHigh,
+
             recommendation: currentRecommendation,
           });
 
@@ -293,8 +347,8 @@ export default function LiveMonitorPage() {
         <div>
           <h1 className="text-3xl font-bold">Live Audio Monitor</h1>
           <p className="mt-2 text-[#8aa3b8]">
-            Analyze microphone audio using waveform, frequency spectrum, noise
-            floor, quality score, and DSP metrics.
+            Analyze microphone audio using waveform, spectrum, noise floor,
+            speech clarity, quality score, and Auto-EQ recommendations.
           </p>
         </div>
 
@@ -306,74 +360,43 @@ export default function LiveMonitorPage() {
         </button>
       </div>
 
-      <div className="mt-8 grid grid-cols-7 gap-5">
-        <div className="rounded-2xl border border-[#22384d] bg-[#0d1f31] p-5">
-          <p className="text-sm text-[#8aa3b8]">RMS Level</p>
-          <h2 className="mt-4 text-2xl font-bold text-[#38bdf8]">{rms}</h2>
-        </div>
-
-        <div className="rounded-2xl border border-[#22384d] bg-[#0d1f31] p-5">
-          <p className="text-sm text-[#8aa3b8]">Peak Level</p>
-          <h2 className="mt-4 text-2xl font-bold text-[#38bdf8]">{peak}</h2>
-        </div>
-
-        <div className="rounded-2xl border border-[#22384d] bg-[#0d1f31] p-5">
-          <p className="text-sm text-[#8aa3b8]">Clipping</p>
-          <h2 className="mt-4 text-2xl font-bold text-[#38bdf8]">
-            {clipping}
-          </h2>
-        </div>
-
-        <div className="rounded-2xl border border-[#22384d] bg-[#0d1f31] p-5">
-          <p className="text-sm text-[#8aa3b8]">Signal Quality</p>
-          <h2 className="mt-4 text-2xl font-bold text-[#38bdf8]">
-            {quality}
-          </h2>
-        </div>
-
-        <div className="rounded-2xl border border-[#22384d] bg-[#0d1f31] p-5">
-          <p className="text-sm text-[#8aa3b8]">Quality Score</p>
-          <h2 className="mt-4 text-2xl font-bold text-green-400">
-            {qualityScore}/100
-          </h2>
-        </div>
-
-        <div className="rounded-2xl border border-[#22384d] bg-[#0d1f31] p-5">
-          <p className="text-sm text-[#8aa3b8]">Noise Floor</p>
-          <h2 className="mt-4 text-2xl font-bold text-[#38bdf8]">
-            {noiseFloor}
-          </h2>
-        </div>
-
-        <div className="rounded-2xl border border-[#22384d] bg-[#0d1f31] p-5">
-          <p className="text-sm text-[#8aa3b8]">Noise Severity</p>
-          <h2 className="mt-4 text-2xl font-bold text-yellow-300">
-            {noiseSeverity}
-          </h2>
-        </div>
+      <div className="mt-8 grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
+        <MetricCard title="RMS Level" value={rms} />
+        <MetricCard title="Peak Level" value={peak} />
+        <MetricCard title="Clipping" value={clipping} />
+        <MetricCard title="Signal Quality" value={quality} />
+        <MetricCard
+          title="Quality Score"
+          value={`${qualityScore}/100`}
+          valueClass="text-green-400"
+        />
+        <MetricCard title="Noise Floor" value={noiseFloor} />
+        <MetricCard
+          title="Noise Severity"
+          value={noiseSeverity}
+          valueClass="text-yellow-300"
+        />
+        <MetricCard
+          title="Speech Clarity"
+          value={`${speechClarityScore}/100`}
+          valueClass="text-green-400"
+        />
+        <MetricCard
+          title="Intelligibility"
+          value={speechClarityLevel}
+          valueClass="text-green-400"
+        />
+        <MetricCard
+          title="EQ Preset"
+          value={autoEqPreset}
+          valueClass="text-purple-400"
+        />
       </div>
 
-      <div className="mt-8 grid grid-cols-3 gap-5">
-        <div className="rounded-2xl border border-[#22384d] bg-[#0d1f31] p-5">
-          <p className="text-sm text-[#8aa3b8]">Low Frequency</p>
-          <h2 className="mt-4 text-2xl font-bold text-[#38bdf8]">
-            {lowEnergy}
-          </h2>
-        </div>
-
-        <div className="rounded-2xl border border-[#22384d] bg-[#0d1f31] p-5">
-          <p className="text-sm text-[#8aa3b8]">Mid Frequency</p>
-          <h2 className="mt-4 text-2xl font-bold text-[#38bdf8]">
-            {midEnergy}
-          </h2>
-        </div>
-
-        <div className="rounded-2xl border border-[#22384d] bg-[#0d1f31] p-5">
-          <p className="text-sm text-[#8aa3b8]">High Frequency</p>
-          <h2 className="mt-4 text-2xl font-bold text-[#38bdf8]">
-            {highEnergy}
-          </h2>
-        </div>
+      <div className="mt-8 grid grid-cols-1 gap-5 md:grid-cols-3">
+        <MetricCard title="Low Frequency" value={lowEnergy} />
+        <MetricCard title="Mid Frequency" value={midEnergy} />
+        <MetricCard title="High Frequency" value={highEnergy} />
       </div>
 
       <section className="mt-8 rounded-2xl border border-[#22384d] bg-[#0d1f31] p-6">
@@ -405,6 +428,51 @@ export default function LiveMonitorPage() {
           <p className="text-[#cfe7f8]">{recommendation}</p>
         </div>
       </section>
+
+      <section className="mt-8 rounded-2xl border border-[#22384d] bg-[#0d1f31] p-6">
+        <h2 className="text-lg font-semibold">Auto-EQ Recommendation Engine</h2>
+
+        <div className="mt-5 rounded-xl border border-[#22384d] bg-[#11283d] p-5">
+          <p className="font-semibold text-purple-400">
+            Preset: {autoEqPreset}
+          </p>
+
+          <p className="mt-3 text-[#cfe7f8]">{autoEqSummary}</p>
+
+          <ul className="mt-4 space-y-2">
+            {autoEqActions.length === 0 ? (
+              <li className="text-sm text-[#8aa3b8]">
+                Start monitoring to generate EQ actions.
+              </li>
+            ) : (
+              autoEqActions.map((action, index) => (
+                <li key={index} className="text-sm text-[#cfe7f8]">
+                  • {action}
+                </li>
+              ))
+            )}
+          </ul>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+type MetricCardProps = {
+  title: string;
+  value: string;
+  valueClass?: string;
+};
+
+function MetricCard({
+  title,
+  value,
+  valueClass = "text-[#38bdf8]",
+}: MetricCardProps) {
+  return (
+    <div className="rounded-2xl border border-[#22384d] bg-[#0d1f31] p-5">
+      <p className="text-sm text-[#8aa3b8]">{title}</p>
+      <h2 className={`mt-4 text-2xl font-bold ${valueClass}`}>{value}</h2>
     </div>
   );
 }

@@ -42,14 +42,27 @@ export default function ReportsPage() {
         )
       : 0;
 
+  const averageSpeechClarity =
+    logs.length > 0
+      ? Math.round(
+          logs.reduce(
+            (acc, log) => acc + (log.speechClarityScore || 0),
+            0
+          ) / logs.length
+        )
+      : 0;
+
+  const latestEqPreset =
+    logs.length > 0 ? logs[0].autoEqPreset || "Balanced Live Mix" : "None";
+
   return (
     <div>
       <div className="flex items-center justify-between gap-5">
         <div>
           <h1 className="text-3xl font-bold">Session Reports</h1>
           <p className="mt-2 text-[#8aa3b8]">
-            Review saved monitoring logs, noise floor readings, quality scores,
-            and assistant recommendations.
+            Review saved monitoring logs, noise readings, speech clarity,
+            Auto-EQ suggestions, and assistant recommendations.
           </p>
         </div>
 
@@ -61,72 +74,94 @@ export default function ReportsPage() {
         </button>
       </div>
 
-      <div className="mt-8 grid grid-cols-5 gap-5">
-        <div className="rounded-2xl border border-[#22384d] bg-[#0d1f31] p-5">
-          <p className="text-sm text-[#8aa3b8]">Total Logs</p>
-          <h2 className="mt-3 text-3xl font-bold text-[#38bdf8]">
-            {logs.length}
-          </h2>
-        </div>
-
-        <div className="rounded-2xl border border-[#22384d] bg-[#0d1f31] p-5">
-          <p className="text-sm text-[#8aa3b8]">Avg Quality</p>
-          <h2 className="mt-3 text-3xl font-bold text-green-400">
-            {averageScore}/100
-          </h2>
-        </div>
-
-        <div className="rounded-2xl border border-[#22384d] bg-[#0d1f31] p-5">
-          <p className="text-sm text-[#8aa3b8]">Clipping Alerts</p>
-          <h2 className="mt-3 text-3xl font-bold text-red-400">
-            {clippingCount}
-          </h2>
-        </div>
-
-        <div className="rounded-2xl border border-[#22384d] bg-[#0d1f31] p-5">
-          <p className="text-sm text-[#8aa3b8]">Warnings</p>
-          <h2 className="mt-3 text-3xl font-bold text-yellow-300">
-            {warningCount}
-          </h2>
-        </div>
-
-        <div className="rounded-2xl border border-[#22384d] bg-[#0d1f31] p-5">
-          <p className="text-sm text-[#8aa3b8]">High Noise</p>
-          <h2 className="mt-3 text-3xl font-bold text-orange-300">
-            {highNoiseCount}
-          </h2>
-        </div>
+      <div className="mt-8 grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+        <MetricCard title="Total Logs" value={`${logs.length}`} />
+        <MetricCard
+          title="Avg Quality"
+          value={`${averageScore}/100`}
+          valueClass="text-green-400"
+        />
+        <MetricCard
+          title="Speech Clarity"
+          value={`${averageSpeechClarity}/100`}
+          valueClass="text-green-400"
+        />
+        <MetricCard
+          title="Clipping Alerts"
+          value={`${clippingCount}`}
+          valueClass="text-red-400"
+        />
+        <MetricCard
+          title="Warnings"
+          value={`${warningCount}`}
+          valueClass="text-yellow-300"
+        />
+        <MetricCard
+          title="High Noise"
+          value={`${highNoiseCount}`}
+          valueClass="text-orange-300"
+        />
       </div>
 
+      <section className="mt-8 rounded-2xl border border-[#22384d] bg-[#0d1f31] p-6">
+        <h2 className="text-lg font-semibold">Latest Auto-EQ Summary</h2>
+
+        <div className="mt-5 rounded-xl border border-[#22384d] bg-[#11283d] p-5">
+          <p className="font-semibold text-purple-400">
+            Latest Preset: {latestEqPreset}
+          </p>
+
+          <p className="mt-3 text-[#cfe7f8]">
+            {logs.length > 0
+              ? logs[0].autoEqSummary || "No EQ summary available."
+              : "No session logs available yet."}
+          </p>
+
+          <ul className="mt-4 space-y-2">
+            {logs.length > 0 &&
+            logs[0].autoEqActions &&
+            logs[0].autoEqActions.length > 0 ? (
+              logs[0].autoEqActions.map((action, index) => (
+                <li key={index} className="text-sm text-[#cfe7f8]">
+                  • {action}
+                </li>
+              ))
+            ) : (
+              <li className="text-sm text-[#8aa3b8]">
+                Start monitoring to generate Auto-EQ recommendations.
+              </li>
+            )}
+          </ul>
+        </div>
+      </section>
+
       <div className="mt-8 overflow-x-auto rounded-2xl border border-[#22384d] bg-[#0d1f31]">
-        <table className="w-full min-w-[1350px]">
+        <table className="w-full min-w-[1750px]">
           <thead className="bg-[#11283d]">
             <tr>
-              <th className="p-4 text-left text-sm font-semibold">Time</th>
-              <th className="p-4 text-left text-sm font-semibold">Quality</th>
-              <th className="p-4 text-left text-sm font-semibold">Score</th>
-              <th className="p-4 text-left text-sm font-semibold">RMS</th>
-              <th className="p-4 text-left text-sm font-semibold">Peak</th>
-              <th className="p-4 text-left text-sm font-semibold">Clipping</th>
-              <th className="p-4 text-left text-sm font-semibold">
-                Noise Floor
-              </th>
-              <th className="p-4 text-left text-sm font-semibold">
-                Noise Severity
-              </th>
-              <th className="p-4 text-left text-sm font-semibold">Low</th>
-              <th className="p-4 text-left text-sm font-semibold">Mid</th>
-              <th className="p-4 text-left text-sm font-semibold">High</th>
-              <th className="p-4 text-left text-sm font-semibold">
-                Recommendation
-              </th>
+              <TableHead>Time</TableHead>
+              <TableHead>Quality</TableHead>
+              <TableHead>Score</TableHead>
+              <TableHead>Speech Score</TableHead>
+              <TableHead>Speech Level</TableHead>
+              <TableHead>EQ Preset</TableHead>
+              <TableHead>EQ Recommendation</TableHead>
+              <TableHead>RMS</TableHead>
+              <TableHead>Peak</TableHead>
+              <TableHead>Clipping</TableHead>
+              <TableHead>Noise Floor</TableHead>
+              <TableHead>Noise Severity</TableHead>
+              <TableHead>Low</TableHead>
+              <TableHead>Mid</TableHead>
+              <TableHead>High</TableHead>
+              <TableHead>Recommendation</TableHead>
             </tr>
           </thead>
 
           <tbody>
             {logs.length === 0 ? (
               <tr>
-                <td colSpan={12} className="p-10 text-center text-[#8aa3b8]">
+                <td colSpan={16} className="p-10 text-center text-[#8aa3b8]">
                   No session logs available. Start monitoring audio to generate
                   reports.
                 </td>
@@ -134,24 +169,48 @@ export default function ReportsPage() {
             ) : (
               logs.map((log, index) => (
                 <tr key={index} className="border-t border-[#22384d]">
-                  <td className="whitespace-nowrap p-4 text-sm">{log.time}</td>
-                  <td className="p-4 text-sm text-[#38bdf8]">{log.quality}</td>
-                  <td className="p-4 text-sm text-green-400">
+                  <TableCell nowrap>{log.time}</TableCell>
+
+                  <TableCell className="text-[#38bdf8]">
+                    {log.quality}
+                  </TableCell>
+
+                  <TableCell className="text-green-400">
                     {log.qualityScore}/100
-                  </td>
-                  <td className="p-4 text-sm">{log.rms}</td>
-                  <td className="p-4 text-sm">{log.peak}</td>
-                  <td className="p-4 text-sm">{log.clipping}</td>
-                  <td className="p-4 text-sm">{log.noiseFloor}</td>
-                  <td className="p-4 text-sm text-yellow-300">
+                  </TableCell>
+
+                  <TableCell className="text-green-400">
+                    {log.speechClarityScore}/100
+                  </TableCell>
+
+                  <TableCell className="text-green-400">
+                    {log.speechClarityLevel}
+                  </TableCell>
+
+                  <TableCell className="text-purple-400">
+                    {log.autoEqPreset || "Balanced Live Mix"}
+                  </TableCell>
+
+                  <TableCell className="max-w-md text-[#cfe7f8]">
+                    {log.autoEqSummary || "No EQ recommendation available."}
+                  </TableCell>
+
+                  <TableCell>{log.rms}</TableCell>
+                  <TableCell>{log.peak}</TableCell>
+                  <TableCell>{log.clipping}</TableCell>
+                  <TableCell>{log.noiseFloor}</TableCell>
+
+                  <TableCell className="text-yellow-300">
                     {log.noiseSeverity}
-                  </td>
-                  <td className="p-4 text-sm">{log.lowEnergy}</td>
-                  <td className="p-4 text-sm">{log.midEnergy}</td>
-                  <td className="p-4 text-sm">{log.highEnergy}</td>
-                  <td className="max-w-md p-4 text-sm text-[#cfe7f8]">
+                  </TableCell>
+
+                  <TableCell>{log.lowEnergy}</TableCell>
+                  <TableCell>{log.midEnergy}</TableCell>
+                  <TableCell>{log.highEnergy}</TableCell>
+
+                  <TableCell className="max-w-md text-[#cfe7f8]">
                     {log.recommendation}
-                  </td>
+                  </TableCell>
                 </tr>
               ))
             )}
@@ -159,5 +218,46 @@ export default function ReportsPage() {
         </table>
       </div>
     </div>
+  );
+}
+
+type MetricCardProps = {
+  title: string;
+  value: string;
+  valueClass?: string;
+};
+
+function MetricCard({
+  title,
+  value,
+  valueClass = "text-[#38bdf8]",
+}: MetricCardProps) {
+  return (
+    <div className="rounded-2xl border border-[#22384d] bg-[#0d1f31] p-5">
+      <p className="text-sm text-[#8aa3b8]">{title}</p>
+      <h2 className={`mt-3 text-3xl font-bold ${valueClass}`}>{value}</h2>
+    </div>
+  );
+}
+
+function TableHead({ children }: { children: React.ReactNode }) {
+  return <th className="p-4 text-left text-sm font-semibold">{children}</th>;
+}
+
+function TableCell({
+  children,
+  className = "",
+  nowrap = false,
+}: {
+  children: React.ReactNode;
+  className?: string;
+  nowrap?: boolean;
+}) {
+  return (
+    <td
+      className={`p-4 text-sm ${nowrap ? "whitespace-nowrap" : ""} ${className}`}
+    >
+      {children}
+    </td>
   );
 }
